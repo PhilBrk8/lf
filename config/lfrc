@@ -1,0 +1,240 @@
+# set '-eu' options for shell commands
+# These options are used to have safer shell commands. Option '-e' is used to
+# exit on error and option '-u' is used to give error for unset variables.
+# Option '-f' disables pathname expansion which can be useful when $f, $fs, and
+# $fx variables contain names with '*' or '?' characters. However, this option
+# is used selectively within individual commands as it can be limiting at
+# times.
+set shell zsh # interpreter for shell commands
+set shellopts '-eu'
+
+# set internal field separator (IFS) to "\n" for shell commands
+# This is useful to automatically split file names in $fs and $fx properly
+# since default file separator used in these variables (i.e. 'filesep' option)
+# is newline. You need to consider the values of these options and create your
+# commands accordingly.
+set ifs "\n"
+
+# Use the `dim` attribute instead of underline for the cursor in the preview pane
+set cursorpreviewfmt "\033[7;2m"
+
+set scrolloff 10 # leave some space at top/bottom of the screen
+set hidden true # always show hidden files
+set ignorecase true # ignore case sensitivity
+set icons true ## use icons
+
+
+# use s to open a shell command prompt
+map s shell
+
+# show the result of execution of previous commands
+map ` !true
+
+# execute current file (must be executable)
+map x $$f
+map X !$f
+
+# dedicated keys for file opener actions
+map o &mimeopen $f
+map O $mimeopen --ask $f
+
+# define a custom 'open' command
+# This command is called when current file is not a directory. You may want to
+# use either file extensions and/or mime types here. Below uses an editor for
+# text files and a file opener for the rest.
+cmd open &{{
+    case $(file --mime-type -Lb $f) in
+        text/*) lf -remote "send $id \$$EDITOR \$fx";;
+        *) for f in $fx; do $OPENER $f > /dev/null 2> /dev/null & done;;
+    esac
+}}
+
+
+# move current file or selected files to trash folder
+# (also see 'man mv' for backup/overwrite options)
+cmd trash %set -f; mv $fx ~/.trash
+map t trash # keybinding for trash command
+
+# extract the current file with the right command
+# (xkcd link: https://xkcd.com/1168/)
+cmd extract ${{
+    set -f
+    case $f in
+        *.tar.bz|*.tar.bz2|*.tbz|*.tbz2) tar xjvf $f;;
+        *.tar.gz|*.tgz) tar xzvf $f;;
+        *.tar.xz|*.txz) tar xJvf $f;;
+        *.zip) unzip $f;;
+        *.rar) unrar x $f;;
+        *.7z) 7z x $f;;
+    esac
+}}
+map e extract # keybinding for extract command
+
+# compress current file or selected files with tar and gunzip
+cmd tar ${{
+    set -f
+    mkdir $1
+    cp -r $fx $1
+    tar czf $1.tar.gz $1
+    rm -rf $1
+}}
+
+# compress current file or selected files with zip
+cmd zip ${{
+    set -f
+    mkdir $1
+    cp -r $fx $1
+    zip -r $1.zip $1
+    rm -rf $1
+}}
+
+# Edit and reload the config file
+cmd edit-config ${{
+    $EDITOR ~/.config/lf/lfrc
+    lf -remote "send $id source ~/.config/lf/lfrc"
+}}
+map C edit-config
+
+# some more own keybindings
+map . set hidden! #toggles set hidden environment variable
+map DD delete
+map <delete> trash
+map <enter> open
+map R reload
+map A makefile
+map a :push %mkdir<space>
+
+
+# Enhancing the rename command
+# lf by default places the cursor right before the extension when renaming a file.
+# However you can add additional bindings for other renaming schemes with the following config:
+map r # unmap the default rename keybinding
+map i rename # rename with the cursor placed at the extension (original behavior)	rename: foo|.txt
+map I :rename; cmd-home # rename with the cursor placed at the beginning	        rename: |foo.txt
+map A :rename; cmd-end # rename with the cursor placed at the end	                rename: foo.txt|
+map r :rename; cmd-delete-home # rename with the portion before the extension deleted	rename: |.txt
+map R :rename; cmd-end; cmd-delete-home # rename with the entire filename deleted	rename: |
+
+
+# navigate to common directories
+map md cd ~/Documents/ 
+map mD cd ~/Downloads/
+map mc cd ~/.config/
+map mz cd ~/.config/zsh/ 
+map mn cd ~/.config/nvim/
+map mb cd /run/media/phil/Backup1/
+map mt cd /run/media/phil/T7/
+
+
+
+# eza can be used to provide the file information shown in the bottom left corner:
+cmd on-select &{{
+    lf -remote "send $id set statfmt \"$(eza -ld --color=always "$f" | sed 's/\\/\\\\/g;s/"/\\"/g')\""
+}}
+
+
+
+# A new cd command that helps you navigate faster by learning your habits.
+cmd z-jump ${{
+    lf -remote "send $id cd \"$(/path/to/z.lua -e "$@" | sed 's/\\/\\\\/g;s/"/\\"/g')\""
+}}
+map Z push :z-jump<space>-I<space>
+map zb push :z-jump<space>-b<space>
+map zz push :z-jump<space>
+::
+
+
+# autojump can be used to jump to a directory in lf that contains a given string:
+cmd aj %lf -remote "send $id cd \"$(autojump "$1" | sed 's/\\/\\\\/g;s/"/\\"/g')\""
+map a push :aj<space>
+
+
+# Showing progress, speed and ETA when copying and moving files but using only cp, mv, and cp-p magic.
+cmd paste $cp-p --lf-paste "$id"
+
+
+# Convert audio files to mp3s using lame:
+cmd mp3 ${{
+    set -f
+    outname="$(printf '%s' "$f" | cut -d. -f1)"
+    lame -V --preset standard $f "$outname.mp3"
+}}
+
+
+
+# The following script compresses the (selected) files of type webm,mkv,mp4 and notifies the user whenever it's finished.
+# It is essentially a glorified 'ffmpeg -i input.video -vcodec libx265 -crf "$compressionRatio" output.mp4;'-command
+# Recommended for videos downloaded off websites (especially .webm/.mkv) and for mass-selecting a 10GB+ video folder and just letting it run in the background for hours, saving many gigabytes. 
+# The compression ratio is determined by the user input (30 being default, which even at crystal-clear videos is hard to see difference, but 30 is rarely worth it on mp4 videos)
+cmd compressvideo ${{
+    clear
+    set -f
+
+    converted_filenames="" # notify-send variable
+    converted_files_count=0 # notify-send variable
+
+    echo "Compression Rate? (default: 31, maximum: 50)"
+    read compressionRate
+
+    # If not a number (e.g. empty), give default 31 value
+    if ! [[ $cr =~ ^[0-5][0-9]$ ]]; then
+        compressionRate="31"
+    fi
+
+    for pickedFilepath in $fx; do
+        # could instead use ffprobe but would get more complicated as the filetype suffix becomes unknown
+        case "$pickedFilepath" in
+            *.mp4)
+                tempFilepath="$(printf '%s' "$pickedFilepath" | sed 's|.mp4|(CONVERTING).mp4|')"
+                mv -f "$pickedFilepath" "$tempFilepath"
+
+                ffmpeg -i "$tempFilepath" -vcodec libx265 -crf "$compressionRate" "$pickedFilepath"
+                rm -f -- "$tempFilepath"
+                ;;
+            *.webm | *.mkv)
+                newFilepath="$(printf '%s' "$pickedFilepath" | sed 's/\(.webm\|.mkv\)/.mp4/')"
+                ffmpeg -i "$pickedFilepath" -vcodec libx265 -crf "$compressionRate" "$newFilepath"
+                rm -f -- "$pickedFilepath"
+                ;;
+            *) continue 1;;
+        esac
+
+        ((converted_files_count=converted_files_count+1))
+        converted_filenames="$converted_filenames"$'\n'"$pickedFilepath"
+
+    done
+
+    # Notify the user of the results
+    if [[ $converted_files_count -gt 0 ]]; then
+        converted_filenames="$(printf '%s' "$converted_filenames" | sed 's|.*\/||')"
+        notify-send "Compressed Videos($converted_files_count):" "$converted_filenames"
+    fi
+}}
+
+
+
+# You can define a command to rename multiple files at the same time using your text editor to change the names.
+# This command either works on selected files or non-hidden files in the current directory if you don't have any selection.
+cmd bulk-rename ${{
+    old="$(mktemp)"
+    new="$(mktemp)"
+    if [ -n "$fs" ]; then
+        fs="$(basename -a -- $fs)"
+    else
+        fs="$(ls)"
+    fi
+    printf '%s\n' "$fs" > "$old"
+    printf '%s\n' "$fs" > "$new"
+    $EDITOR "$new"
+    [ "$(wc -l < "$new")" -ne "$(wc -l < "$old")" ] && exit
+    paste "$old" "$new" | while IFS= read -r names; do
+        src="$(printf '%s' "$names" | cut -f1)"
+        dst="$(printf '%s' "$names" | cut -f2)"
+        if [ "$src" = "$dst" ] || [ -e "$dst" ]; then
+            continue
+        fi
+        mv -- "$src" "$dst"
+    done
+    rm -- "$old" "$new"
+    lf -remote "send $id unselect"
+}}
