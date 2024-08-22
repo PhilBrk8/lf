@@ -17,21 +17,12 @@
 
 ## Previews
 
-<details>
-<summary>🌻 Latte</summary>
-<img src="https://raw.githubusercontent.com/catppuccin/catppuccin/main/assets/previews/latte.webp"/>
-</details>
-<details>
-<summary>🪴 Frappé</summary>
-<img src="https://raw.githubusercontent.com/catppuccin/catppuccin/main/assets/previews/frappe.webp"/>
-</details>
-<details>
-<summary>🌺 Macchiato</summary>
-<img src="https://raw.githubusercontent.com/catppuccin/catppuccin/main/assets/previews/macchiato.webp"/>
-</details>
-<details>
 <summary>🌿 Mocha</summary>
-![alt text](image.png)
+
+Please be aware that I also use the [Alacritty Terminal Mocha Theme](https://github.com/catppuccin/alacritty).  
+If you don't then your lf file manager might look different.
+
+<img src="assets/mocha.png"/>
 </details>
 
 ## Usage
